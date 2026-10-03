@@ -30,8 +30,8 @@ META_MAP = {"órgão": "orgao", "orgao": "orgao", "banca": "banca", "cargo": "ca
             "data do edital": "data_edital", "data": "data_edital", "concurso": "concurso"}
 
 PAGE_NOISE = re.compile(r'TRIBUNAL DE JUSTI|CONCURSO P[ÚU]BLICO|^\s*\d{1,3}\s*$|^\s*P[áa]gina\s+\d+', re.I)
-ITEM_MARK  = re.compile(r'(?<![\w./º°§])(\d{1,2}(?:\.\d{1,2}){0,3})\s+(?=[A-ZÀ-Ý])')
-PRECEDE_BAD = re.compile(r'(n[ºo°]\.?|lei|decreto|resolu|s[úu]mula|\bart|§|inciso|\bn\b)\s*$', re.I)
+ITEM_MARK  = re.compile(r'(?<![\w./º°§])(\d{1,2}(?:\.\d{1,2}){0,3})\s+(?=[A-ZÀ-Ý]|[a-z]-[A-Za-z])')
+PRECEDE_BAD = re.compile(r'(\bn[ºo°]\.?|lei|decreto|resolu|s[úu]mula|\bart|§|inciso|\bn\b)\s*$', re.I)
 
 HEADER_WORDS = {"CARGO", "GRUPO", "NIVEL", "SUPERIOR", "MEDIO", "SEM", "COM", "E", "DA", "DE",
                 "DO", "DOS", "DAS", "ESPECIALIDADE", "ANALISTA", "TECNICO", "JUDICIARIO",
@@ -91,7 +91,7 @@ def _title(n):
         elif i > 0 and w.lower() in TITLE_SMALL:
             out.append(w.lower())
         else:
-            out.append(w.capitalize())
+            out.append("/".join(p.capitalize() for p in w.split("/")))
     return " ".join(out)
 
 
@@ -123,7 +123,7 @@ def _tokenize_items(blob):
 
 
 DISC_INLINE = re.compile(
-    r'((?:[A-ZÀ-Ý][A-ZÀ-Ý/\-]*)(?:[ ,]+(?:[A-ZÀ-Ý][A-ZÀ-Ý/\-]*|E|DO|DA|DE|DOS|DAS)){0,10}):\s+(?=1\b)'
+    r'((?:[A-ZÀ-Ý][A-ZÀ-Ý/\-]*)(?:[ ,]+(?:[A-ZÀ-Ý][A-ZÀ-Ý/\-]*|E|DO|DA|DE|DOS|DAS)){0,15}):\s+(?=1\b)'
 )
 
 
@@ -140,6 +140,64 @@ def parse_cebraspe(text):
         if itens:
             disciplinas.append({"nome": nome, "itens": itens})
     return disciplinas
+
+
+CARGO_HDR   = re.compile(r'^CARGO(\s*\d+\s*:.*)?$')
+CARGO_LABEL = re.compile(r'^CARGO\s*(\d+)\s*:\s*(?:ANALISTA LEGISLATIVO\s*[–-]\s*)?(?:ESPECIALIDADE\s*:\s*)?', re.I)
+ASSINATURA  = re.compile(r'\n[ \t]*[A-ZÀ-Ý][A-ZÀ-Ý ]{5,}[ \t]*\n\s*Presidente\b')
+
+
+def _cebraspe_block(blob, nome_implicito):
+    """Disciplinas inline de um bloco; itens antes da 1ª disciplina viram disciplina implícita."""
+    blob = re.sub(r'\s+', ' ', blob).strip()
+    m = DISC_INLINE.search(blob)
+    head = blob[:m.start()] if m else blob
+    out = []
+    itens = _tokenize_items(head)
+    if itens:
+        out.append({"nome": nome_implicito, "itens": itens})
+    if m:
+        out += parse_cebraspe(blob[m.start():])
+    return out
+
+
+def parse_cebraspe_cargos(text):
+    """Editais CEBRASPE com vários cargos: 'CONHECIMENTOS BÁSICOS' (comuns) seguido de
+    'CONHECIMENTOS ESPECÍFICOS' com blocos 'CARGO N: ... – ESPECIALIDADE: X – ÁREA: Y'.
+    O cabeçalho do cargo pode quebrar em várias linhas em CAPS; termina na 1ª linha que
+    não é CAPS (início de disciplina inline) ou que começa com número (itens diretos)."""
+    m = ASSINATURA.search(text)
+    if m:
+        text = text[:m.start()]
+    gerais_txt, cargos, cur, hdr = [], [], None, None
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s:
+            continue
+        U = _fold(s)
+        if "CONHECIMENTOS BASICOS" in U or "CONHECIMENTOS GERAIS" in U:
+            cur, hdr = gerais_txt, None; continue
+        if "CONHECIMENTOS ESPEC" in U:
+            cur, hdr = None, None; continue
+        if CARGO_HDR.match(U):
+            hdr = [s]; continue
+        if hdr is not None:
+            if (DASH_ONLY.match(s) or _is_caps_line(s)) and not re.match(r'\d+(\.\d+)*\s', s):
+                hdr.append(s); continue
+            label = re.sub(r'\s+', ' ', " ".join(hdr))
+            num = CARGO_LABEL.match(label)
+            nome = CARGO_LABEL.sub("", label).strip(" –-:")
+            cur = []
+            cargos.append({"nome": f"Cargo {num.group(1)} – {_title(nome)}" if num else _title(nome),
+                           "area": _title(re.split(r'(?i)[ÁA]REA\s*:\s*', nome)[-1].strip(" –-:")),
+                           "txt": cur})
+            hdr = None
+        if cur is not None:
+            cur.append(s)
+    gerais = _cebraspe_block(" ".join(gerais_txt), "Conhecimentos Básicos")
+    for c in cargos:
+        c["disciplinas"] = _cebraspe_block(" ".join(c.pop("txt")), c.pop("area"))
+    return gerais, [c for c in cargos if c["disciplinas"]]
 
 
 def parse_markdown(text):
@@ -264,7 +322,7 @@ def extract(path):
         meta, disciplinas, _ = parse_markdown(path.read_text(encoding="utf-8"))
         return meta, disciplinas, []          # gerais = todas; sem cargos
     if suf == ".pdf":
-        import fitz
+        import pymupdf as fitz
         full = "\n".join(p.get_text() for p in fitz.open(str(path)))
         def _find_heading(key):
             # cabeçalhos vêm em CAPS no edital; procurar case-sensitive evita casar
@@ -285,6 +343,8 @@ def extract(path):
         if m and m.start() > 200:
             section = section[:m.start()]
         sys.stderr.write("[aviso] extração de PDF é heurística — confira o resumo.\n")
+        if cebraspe and re.search(r'^\s*CARGO\s*\d+\s*:', section, re.M):
+            return {}, *parse_cebraspe_cargos(section)
         gerais, cargos = parse_estruturado(section)
         if not gerais and not cargos:
             gerais = parse_cebraspe(section)   # fallback: layout CEBRASPE, cargo único
@@ -310,7 +370,7 @@ def main():
 
     n_g = sum(len(d["itens"]) for d in gerais)
     if cargos:
-        print(f"CONHECIMENTOS GERAIS (comuns): {len(gerais)} disciplinas, {n_g} itens")
+        print(f"CONHECIMENTOS GERAIS/BÁSICOS (comuns): {len(gerais)} disciplinas, {n_g} itens")
         print(f"\nCARGOS / ESPECIALIDADES detectados ({len(cargos)}):")
         for i, c in enumerate(cargos, 1):
             ni = sum(len(d['itens']) for d in c['disciplinas'])
@@ -338,7 +398,12 @@ def main():
             print("\n→ Reexecute com --cargo <nº|nome> --out edital.json para gerar a planilha desse cargo.")
         return
 
-    disciplinas = list(gerais) + (chosen["disciplinas"] if chosen else [])
+    # bloco: "basicos" (comuns a todos os cargos) ou "especificos" (do cargo escolhido)
+    disciplinas = [dict(d, bloco="basicos") for d in gerais] + \
+                  [dict(d, bloco="especificos") for d in (chosen["disciplinas"] if chosen else [])]
+    if not chosen:  # cargo único / .md: sem divisão
+        for d in disciplinas:
+            d.pop("bloco")
     data = {
         "concurso": args.concurso or meta.get("concurso", ""),
         "orgao": args.orgao or meta.get("orgao", ""),
