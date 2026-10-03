@@ -122,9 +122,32 @@ def _tokenize_items(blob):
     return itens
 
 
+ROMANO = r'(?:I{1,3}|IV|VI{0,3}|IX|X)'
+# 'NOME:' ou 'NOME (25):' (nº de questões) ou 'NOME (SOMENTE PARA A DISCURSIVA):', seguido do
+# item 1 ou de uma subdivisão em romano ('I MACROECONOMIA: 1 ...'). O nome não pode ser a
+# própria subdivisão romana.
 DISC_INLINE = re.compile(
-    r'((?:[A-ZÀ-Ý][A-ZÀ-Ý/\-]*)(?:[ ,]+(?:[A-ZÀ-Ý][A-ZÀ-Ý/\-]*|E|DO|DA|DE|DOS|DAS)){0,15}):\s+(?=1\b)'
+    r'(?<!\w)(?<!\bI )(?<!\bII )(?<!\bIII )(?<!\bIV )(?<!\bV )(?<!\bVI )(?!' + ROMANO + r'\s)'
+    r'((?:[A-ZÀ-Ý][A-ZÀ-Ý/\-]*)(?:[ ,]+(?:[A-ZÀ-Ý][A-ZÀ-Ý/\-]*|E|DO|DA|DE|DOS|DAS)){0,15})'
+    r'((?:\s*\([^()]{1,80}\)){0,2}):\s+(?=1\b|' + ROMANO + r'\s+[A-ZÀ-Ý])'
 )
+SUBDIV_ROMANA = re.compile(r'\b(' + ROMANO + r')\s+([A-ZÀ-Ý][A-ZÀ-Ý ,/\-]*?[A-ZÀ-Ý]):\s+(?=1\b)')
+
+
+def _itens_com_subdivisoes(blob):
+    """Itens de uma disciplina; subdivisões 'I MACROECONOMIA: 1 ...' viram o item 'I'
+    e os itens dela, 'I.1', 'I.1.1'... (a numeração recomeça em cada subdivisão)."""
+    partes = list(SUBDIV_ROMANA.finditer(blob))
+    if not partes:
+        return _tokenize_items(blob)
+    itens = _tokenize_items(blob[:partes[0].start()])
+    for i, m in enumerate(partes):
+        fim = partes[i + 1].start() if i + 1 < len(partes) else len(blob)
+        rom = m.group(1)
+        itens.append({"numero": rom, "nivel": 1, "texto": _title(m.group(2).strip())})
+        for it in _tokenize_items(blob[m.end():fim]):
+            itens.append({"numero": f"{rom}.{it['numero']}", "nivel": it["nivel"] + 1, "texto": it["texto"]})
+    return itens
 
 
 def parse_cebraspe(text):
@@ -136,7 +159,10 @@ def parse_cebraspe(text):
     for i, m in enumerate(marks):
         end = marks[i + 1].start() if i + 1 < len(marks) else len(blob)
         nome = re.sub(r'\s+', ' ', m.group(1)).strip(" :–-")
-        itens = _tokenize_items(blob[m.end():end])
+        for obs in re.findall(r'\(([^()]*)\)', m.group(2) or ""):
+            if not obs.strip().isdigit():      # '(25)' é nº de questões; o resto é informação
+                nome += f" ({obs.strip()})"
+        itens = _itens_com_subdivisoes(blob[m.end():end])
         if itens:
             disciplinas.append({"nome": nome, "itens": itens})
     return disciplinas
@@ -144,7 +170,7 @@ def parse_cebraspe(text):
 
 CARGO_HDR   = re.compile(r'^CARGO(\s*\d+\s*:.*)?$')
 CARGO_LABEL = re.compile(r'^CARGO\s*(\d+)\s*:\s*(?:ANALISTA LEGISLATIVO\s*[–-]\s*)?(?:ESPECIALIDADE\s*:\s*)?', re.I)
-ASSINATURA  = re.compile(r'\n[ \t]*[A-ZÀ-Ý][A-ZÀ-Ý ]{5,}[ \t]*\n\s*Presidente\b')
+ASSINATURA  = re.compile(r'\n[ \t]*[A-ZÀ-Ý][A-ZÀ-Ý ]{5,}[ \t]*\n\s*(?:Presidente|Chefe|Diretor|Secret[áa]ri)')
 
 
 def _cebraspe_block(blob, nome_implicito):
@@ -172,7 +198,7 @@ def parse_cebraspe_cargos(text):
     gerais_txt, cargos, cur, hdr = [], [], None, None
     for raw in text.splitlines():
         s = raw.strip()
-        if not s:
+        if not s or re.fullmatch(r'\d{1,3}', s):   # vazia ou número de página
             continue
         U = _fold(s)
         if "CONHECIMENTOS BASICOS" in U or "CONHECIMENTOS GERAIS" in U:
