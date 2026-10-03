@@ -2,7 +2,7 @@
 name: verticalizar-edital-pro
 description: "Verticaliza qualquer edital de concurso público e gera o plano de estudo em TRÊS formatos a partir de uma fonte única: PLANILHA viva (Excel .xlsx), PAINEL interativo (HTML) e documento imprimível (DOCX). Use sempre que o usuário quiser transformar um edital (PDF ou conteúdo programático) em um plano de estudo estruturado, priorizável e acompanhável. Gatilhos: 'verticalizar edital', 'planilha do edital', 'edital verticalizado', 'plano de estudo do edital', 'organizar o edital pra estudar', 'acompanhar o edital'. Detecta os cargos/especialidades do edital e deixa o usuário escolher um; extrai disciplinas, assuntos e subitens preservando a numeração e a ordem do edital."
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Verticalizar Edital PRO — plano de estudo em 3 formatos
@@ -38,6 +38,8 @@ Regras de extração: **preservar a numeração e a ordem exatas do edital**, re
 
 - `.md` (conteúdo já verticalizado): extração **exata**, cargo único.
 - `.pdf`: extração **heurística** — itens inline são tokenizados distinguindo nº de item de nº de lei; sempre confira o resumo impresso.
+- **Editais CEBRASPE com vários cargos** (`OBJETOS DE AVALIAÇÃO` → `CONHECIMENTOS BÁSICOS` + `CONHECIMENTOS ESPECÍFICOS` com blocos `CARGO N: ...`) têm parser próprio: reconhece cabeçalhos de cargo quebrados em várias linhas, disciplinas inline (`NOME: 1 item. 1.1 ...`) e cargos que começam direto nos itens (disciplina implícita com o nome da área). A assinatura no fim do edital é descartada.
+- Cada disciplina do JSON leva `bloco`: `"basicos"` (comuns) ou `"especificos"` (do cargo) — o Excel usa isso para separar as abas.
 
 ## Pipeline
 
@@ -47,17 +49,24 @@ python3 scripts/extrair_edital.py <edital.pdf|edital.md> --listar
 python3 scripts/extrair_edital.py <edital.pdf> --cargo "<nº|nome>" --out edital.json \
   [--concurso "..."] [--orgao "..."] [--banca "..."]
 ```
-Saída: `edital.json` = `{concurso, orgao, banca, cargo, data_edital, disciplinas[ {nome, itens[ {numero, nivel, texto} ]} ]}`.
+Saída: `edital.json` = `{concurso, orgao, banca, cargo, data_edital, disciplinas[ {nome, bloco, itens[ {numero, nivel, texto} ]} ]}` (`bloco` só existe quando há seleção de cargo).
 
 ### 2. Gerar os formatos pedidos (todos consomem o mesmo `edital.json`)
 ```bash
-python3 scripts/gerar_excel.py edital.json --out plano.xlsx
-python3 scripts/gerar_html.py  edital.json --out painel.html
-python3 scripts/gerar_docx.py  edital.json --out plano.docx
+python3 scripts/gerar_excel.py edital.json --out plano.xlsx [--sem-logo]
+python3 scripts/gerar_html.py  edital.json --out painel.html [--sem-logo]
+python3 scripts/gerar_docx.py  edital.json --out plano.docx [--sem-logo]
 ```
-- **Excel** — 1 linha por item; colunas Status / Incidência / Prioridade (dropdowns), cores por estado, abas **Resumo** (% de cobertura + gráfico) e **Como usar**.
-- **HTML** — painel de estudo (arquivo único): disciplinas recolhíveis, status por item (clique cicla A estudar → Estudando → Estudado → Revisão), progresso por disciplina e global, busca e filtro — salvo automaticamente no navegador (localStorage) + botões **Salvar/Carregar progresso** que exportam/importam um `.json` (não perde ao trocar de navegador ou dispositivo).
-- **DOCX** — verticalizado imprimível com caixas ☐, quadro-resumo, uma disciplina por página, nº de página no rodapé.
+- **Excel** — compatível com **Google Sheets** (para acompanhar em vários aparelhos). Abas:
+  - **Conhecimentos Básicos** e **Conhecimentos Específicos** — 1 linha por item: Status / Incidência / Prioridade (dropdowns, cores por estado); **Fase 1** e **Fase 2** (Início, Conclusão, Certas, Resolvidas, Porcentagem) e **Questões Fase 3** (Certas, Resolvidas, Porcentagem); Anotações. % de acerto **vermelha abaixo de 70% e verde a partir de 70%**; validação de datas e de questões (inteiros, certas ≤ resolvidas).
+  - **Resumo** — % de cobertura (barra em texto) e % de acerto por fase e no total, por disciplina, subtotal por bloco e total geral; gráfico.
+  - **Edital** — disciplinas × tipo **Decoreba/Raciocínio** (sugestão editável) × ciclos em que entraram (marcados sozinhos).
+  - **Ciclos** — até 6 ciclos de estudo com data de início e blocos de "0' a 1h"; disciplinas escolhidas em lista, coloridas pelo tipo.
+  - **Controle** — por ciclo, matérias × dias: marca-se `x` no dia estudado e o n-ésimo `x` da linha recebe a cor da volta n; mostra **Volta atual** e **Próxima matéria** (ordem do ciclo, sem pular matéria).
+  - **Evolução Semanal** — certas/resolvidas/% por disciplina, semana a semana (15 semanas a partir de uma data editável), com subtotais por bloco.
+  - **Como usar** — instruções, inclusive para Google Sheets e celular.
+- **HTML** — painel de estudo (arquivo único): seções **Conhecimentos Básicos / Específicos**, disciplinas recolhíveis, status por item (clique cicla A estudar → Estudando → Estudado → Revisão), **questões por fase** (botão "Questões" em cada item: Fase 1 e 2 com datas, Fase 3; % vermelha abaixo de 70%, verde a partir de 70%), progresso e % de acerto por disciplina, bloco e global, busca e filtro (inclui "Acerto abaixo de 70%") — salvo automaticamente no navegador (localStorage) + botões **Salvar/Carregar progresso** que exportam/importam um `.json` (não perde ao trocar de navegador ou dispositivo).
+- **DOCX** — verticalizado imprimível: quadro-resumo por bloco, partes **Básicos / Específicos**, uma disciplina por página em tabela (☐ | Nº | Conteúdo | Fase 1 | Fase 2 | Fase 3, com `___/___` para anotar certas/resolvidas à mão), cabeçalho da tabela repetido a cada página, nº de página no rodapé.
 
 ### 3. Conferir e entregar
 Leia o resumo da extração, abra cada arquivo, confirme que disciplinas/itens batem com o edital, e entregue os arquivos ao usuário.
@@ -77,6 +86,6 @@ Os arquivos exibem a logo em `assets/logo.png`, se existir. Para usar outra marc
 | Script | Função |
 |--------|--------|
 | `scripts/extrair_edital.py` | Edital (.md/.pdf/.txt) → JSON canônico, com `--listar`/`--cargo` |
-| `scripts/gerar_excel.py` | JSON → planilha de estudo viva (.xlsx) |
+| `scripts/gerar_excel.py` | JSON → planilha de estudo viva (.xlsx), compatível com Google Sheets |
 | `scripts/gerar_html.py` | JSON → painel de estudo interativo (.html) |
 | `scripts/gerar_docx.py` | JSON → verticalizado imprimível (.docx) |

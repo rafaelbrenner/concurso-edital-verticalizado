@@ -20,9 +20,9 @@
 
 Uma **skill** que transforma o edital de **qualquer concurso público** num **plano de estudo acompanhável**, em três formatos gerados de uma única extração:
 
-- 📊 **Excel** — planilha viva: status por item, incidência, **% de cobertura por disciplina** (com gráfico) e dropdowns.
-- 🖥️ **HTML** — painel interativo: marque o progresso, disciplinas recolhíveis, busca e filtro, **salvo no navegador** e com **Salvar/Carregar progresso** (backup em `.json`). [Veja funcionando →](https://simiao-cavalcante.github.io/edital-verticalizado/demo/painel-pge-al.html)
-- 📄 **DOCX** — versão imprimível, com caixas ☐ pra marcar à mão.
+- 📊 **Excel** — planilha viva, **compatível com Google Sheets**: status por item, incidência, **fases com datas e questões** (% de acerto vermelha abaixo de 70%), **ciclos de estudo** com controle de voltas, **evolução semanal** e **% de cobertura por disciplina** (com gráfico).
+- 🖥️ **HTML** — painel interativo: marque o progresso, **lance as questões de cada fase** (% de acerto colorida), disciplinas recolhíveis, busca e filtro, **salvo no navegador** e com **Salvar/Carregar progresso** (backup em `.json`). [Veja funcionando →](https://simiao-cavalcante.github.io/edital-verticalizado/demo/painel-pge-al.html)
+- 📄 **DOCX** — versão imprimível em tabela, com caixas ☐ e espaço para anotar as questões de cada fase à mão.
 
 > **A IA organiza, você decide.** A skill nunca "chuta" o que mais cai — ela estrutura o edital fielmente e te dá o controle.
 
@@ -37,8 +37,21 @@ Uma **skill** que transforma o edital de **qualquer concurso público** num **pl
 
 - Lê o **PDF do edital**, **detecta os cargos/especialidades** e deixa você escolher um.
 - Extrai disciplinas, assuntos e subitens **preservando a numeração e a ordem** do edital (distingue número de item de número de lei).
-- Separa **Conhecimentos Gerais** (comuns) dos **Específicos** do cargo escolhido.
+- Separa **Conhecimentos Gerais/Básicos** (comuns) dos **Específicos** do cargo escolhido — inclusive em editais **CEBRASPE com vários cargos**.
 - Gera os 3 formatos prontos para estudar e acompanhar.
+
+## 📊 A planilha
+
+| Aba | Para quê |
+|---|---|
+| **Conhecimentos Básicos / Específicos** | Um item por linha: Status, Incidência, Prioridade; **Fase 1** e **Fase 2** (Início, Conclusão, Certas, Resolvidas, %) e **Questões Fase 3**. % de acerto vermelha abaixo de 70%, verde a partir de 70%. |
+| **Resumo** | Cobertura e % de acerto por fase, por disciplina, por bloco e no total. |
+| **Edital** | Cada disciplina como **Decoreba** ou **Raciocínio** e em quais ciclos já entrou. |
+| **Ciclos** | Ciclos de estudo em blocos de "0' a 1h", montados com listas. |
+| **Controle** | Marque `x` no dia em que estudou: a cor mostra a **volta do ciclo**, e a planilha indica a **próxima matéria** — sem pular nenhuma. |
+| **Evolução Semanal** | Questões certas/resolvidas por disciplina, semana a semana até a prova. |
+
+Funciona no **Google Sheets**: suba o `.xlsx` no Drive, salve como Planilha Google e acompanhe pelo computador ou pelo celular.
 
 ## 🧩 Como instalar
 
@@ -63,7 +76,7 @@ Uso direto pelos scripts (opcional):
 ```bash
 python3 scripts/extrair_edital.py edital.pdf --listar
 python3 scripts/extrair_edital.py edital.pdf --cargo "1" --out edital.json
-python3 scripts/gerar_excel.py edital.json --out plano.xlsx
+python3 scripts/gerar_excel.py edital.json --out plano.xlsx   # --sem-logo: sem logo no banner
 python3 scripts/gerar_html.py  edital.json --out painel.html
 python3 scripts/gerar_docx.py  edital.json --out plano.docx
 ```
@@ -90,7 +103,7 @@ A extração de PDF é heurística (itens inline, ruído de página) — sempre 
 
 ## 🎨 Marca (opcional)
 
-Os arquivos exibem a logo em `assets/logo.png`. Para usar outra, substitua esse arquivo ou defina a variável de ambiente `EDITAL_LOGO` com o caminho de um PNG.
+Os arquivos exibem a logo em `assets/logo.png`. Para usar outra, substitua esse arquivo ou defina a variável de ambiente `EDITAL_LOGO` com o caminho de um PNG. Para a planilha sem logo, use `gerar_excel.py --sem-logo`.
 
 ## 📜 Licença
 
