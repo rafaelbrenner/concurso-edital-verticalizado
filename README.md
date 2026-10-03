@@ -15,7 +15,7 @@
 <p align="center">
   🌐 <b><a href="https://simiao-cavalcante.github.io/edital-verticalizado/">Página do projeto</a></b> ·
   🖥️ <b><a href="https://simiao-cavalcante.github.io/edital-verticalizado/demo/painel-pge-al.html">Demo ao vivo</a></b> ·
-  ⬇️ <b><a href="https://github.com/simiao-cavalcante/edital-verticalizado/raw/main/verticalizar-edital-pro.skill">Baixar a skill</a></b>
+  ⬇️ <b><a href="https://github.com/rafaelbrenner/concurso-edital-verticalizado/raw/main/verticalizar-edital-pro.skill">Baixar a skill</a></b>
 </p>
 
 Uma **skill** que transforma o edital de **qualquer concurso público** num **plano de estudo acompanhável**, em três formatos gerados de uma única extração:
