@@ -10,7 +10,7 @@ function iniciar() {
     const py = await loadPyodide();
     py.FS.mkdir('/work');
     await Promise.all(ARQS.map(async f => {
-      const r = await fetch('py/' + f);
+      const r = await fetch('py/' + f, { cache: 'no-cache' });   // sempre a versão publicada mais recente
       if (!r.ok) throw new Error('não achei py/' + f);
       py.FS.writeFile('/work/' + f, new Uint8Array(await r.arrayBuffer()));
     }));
